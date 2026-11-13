@@ -1,0 +1,53 @@
+# Redis + two replicas of the same Next.js image.
+# Open http://localhost:3001 and http://localhost:3002 side by side: a message
+# sent through one instance shows up live in the other, because both instances
+# subscribe to the same Redis pub/sub channels.
+
+name: nextjs-realtime-chat
+
+x-app: &app
+  image: nextjs-realtime-chat:local
+  restart: unless-stopped
+  depends_on:
+    redis:
+      condition: service_healthy
+
+services:
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # For `npm run dev` on the host: reachable from this machine only.
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  app1:
+    <<: *app
+    build: .
+    environment:
+      REDIS_URL: redis://redis:6379
+      INSTANCE_NAME: app1
+    ports:
+      - "3001:3000"
+
+  app2:
+    <<: *app
+    environment:
+      REDIS_URL: redis://redis:6379
+      INSTANCE_NAME: app2
+    ports:
+      - "3002:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      app1:
+        condition: service_started
+
+volumes:
+  redis-data:
